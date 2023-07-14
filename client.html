@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html>
+   <head>
+      
+      <script src="/socket.io/socket.io.js"></script>
+      <style>
+         body {
+            background-color: #f2f2f2;
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            padding: 0;
+         }
+   
+         button {
+            color: #fff;
+            background-color: #4287f5;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+         }
+
+
+         #password-popup {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #f2f2f2;
+            padding: 20px;
+            border: 1px solid #cccccc;
+            border-radius: 5px;
+            z-index: 1;
+         }
+
+         #password-popup form {
+            display: flex;
+            flex-direction: column;
+         }
+
+         #password-popup label {
+            margin-bottom: 10px;
+         }
+
+         #password-popup input[type="password"] {
+            margin-bottom: 10px;
+            padding: 5px;
+         }
+
+         #password-popup button {
+            padding: 5px 10px;
+         }
+
+         /*password prompt */
+         #password-prompt {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #f2f2f2;
+            padding: 20px;
+            border: 1px solid #cccccc;
+            border-radius: 5px;
+            z-index: 1;
+         }
+
+         #password-prompt form {
+            display: flex;
+            flex-direction: column;
+         }
+
+         #password-prompt label {
+            margin-bottom: 10px;
+         }
+
+         #password-prompt input[type="password"] {
+            margin-bottom: 10px;
+            padding: 5px;
+         }
+
+         #password-prompt button {
+            padding: 5px 10px;
+         }
+
+
+   
+         #chatroom-list {
+            display: flex;
+            align-items: center;
+         }
+
+         #chatroom-list select {
+            margin-right: 10px;
+            padding: 5px;
+            border: 1px solid #cccccc;
+            border-radius: 5px;
+            width: 200px;
+         }
+
+         #chatroom-list button {
+            padding: 5px 10px;
+         }
+
+         #chatlog {
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 10px;
+            border: 1px solid #cccccc;
+            border-radius: 5px;
+            background-color: #ffffff;
+            margin-top: 10px;
+            margin-bottom: 10px;
+         }
+
+         #current-room-users p {
+            margin: 5px;
+         }
+
+         #create-chatroom-form {
+            margin: 10px;
+         }
+   
+      </style>
+   </head>
+
+
+   <body>
+      <div id="login-form">
+         <input type="text" id="username" placeholder="nickname" required/>
+         <button id="login_btn">Log in</button>
+      </div>
+      <div id="chatroom">
+         <div id="pre-chatroom">
+            <div id="welcome"></div>
+            <div id="create-chatroom-form">
+               <input type="text" id="chatroom-name" placeholder="chatrooom name" required>
+               <button id="create_chatroom_btn">Create Room</button>
+               <button id="create_pp_chatroom_btn">Create Password Protected Room</button>
+            </div>
+            <div id="chatroom-list">
+               <select id="chatroom_selector">
+               </select>
+               <button id="enter_room_btn">Enter Room</button>
+            </div>
+             
+         </div>
+         <div id="in-room">
+            <div id="current-room-name"></div>
+            <p>Current Users:</p>
+            <div id="current-room-users"></div>
+            <button id="leave_room_btn">Leave</button>
+            <input type=text id="message_input" placeholder="message"/>
+            <button onclick="sendMessage()"  id="send_btn">send</button>
+            <div id="chatlog"></div>
+         </div>
+      </div>
+
+      <!--password popup form-->
+      <div id="password-popup">
+         <form>
+             <label for="password">Password:</label>
+             <input type="password" id="password" required>
+             <button id="submit_password_btn">Submit</button>
+         </form>
+     </div>
+
+     <!--password prompt form-->
+      <div id="password-prompt">
+         <form>
+            <h3>This room is password protected</h3>
+            <label for="password">Enter Password:</label>
+            <input type="password" id="prompted_password" name="prompted_password" required>
+            <button id="submit_prompted_password_btn" type="button">Submit</button>
+         </form>
+      </div>
+      
+      
+
+
+
+
+      <script>
+         var socketio = io.connect();
+
+         //hiding chatroom before login
+         document.addEventListener("DOMContentLoaded", function() {
+            document.getElementById("chatroom").style.display="none";
+         });
+
+         //display chatroom and set username after login
+         document.getElementById("login_btn").addEventListener("click", displayChatRoom);
+
+
+         
+         let username = '';
+         let curRoomId = '';
+         function displayChatRoom() {
+            username = document.getElementById("username").value;
+            document.getElementById("chatroom").style.display="block";
+            var welcome = document.createElement("p");
+            welcome.textContent="Welcome "+username;
+            document.getElementById("welcome").appendChild(welcome);
+            var loginForm = document.getElementById("login-form");
+            loginForm.style.display="none";
+            var inRoom = document.getElementById("in-room");
+            inRoom.style.display="none";
+
+            //adding the new user to the server
+            socketio.emit("new-user", username);
+         }
+
+
+        
+         
+         
+         //var socketio = io();
+
+          //creating new chat room
+
+
+          
+         document.getElementById("create_chatroom_btn").addEventListener("click", function () {
+            createRoom();
+         });
+
+         document.getElementById("create_pp_chatroom_btn").addEventListener("click", function() {
+            var passForm = document.getElementById("password-popup");
+            passForm.style.display="block";
+         });
+
+         document.getElementById("submit_password_btn").addEventListener("click", function(event) {
+            event.preventDefault();
+            var passForm = document.getElementById("password-popup");
+            passForm.style.display="none";
+            var passwordEntry = document.getElementById("password");
+            var password = passwordEntry.value;
+            passwordEntry.value = '';
+            createRoom(password);
+
+         });
+         
+         //create room
+         function createRoom(password) {
+            document.getElementById("chatlog").innerHTML='';
+            var roomName = document.getElementById("chatroom-name").value;
+            console.log(roomName);
+            socketio.emit("create_chatroom", { roomName, password });
+            var inRoom = document.getElementById("in-room");
+            inRoom.style.display="block";
+            document.getElementById("chatroom-name").value='';
+            updateCurrentRoomName(roomName);
+         }
+
+         
+
+         /*
+         function createPpRoom(password) {
+            
+            console.log("password: "+password);
+            document.getElementById("chatlog").innerHTML='';
+            var roomName = document.getElementById("chatroom-name").value;
+            console.log(roomName);
+            socketio.emit("create_chatroom", { roomName, password });
+            var inRoom = document.getElementById("in-room");
+            inRoom.style.display="block";
+            document.getElementById("chatroom-name").value='';
+            updateCurrentRoomName(roomName);
+         }
+         */
+
+         function joinRoom(roomId) {
+            socketio.emit("join_chatroom", roomId);
+            
+            /* moving this code to joined_room_info so that it doesn't show up if password is prompted
+            document.getElementById("chatlog").innerHTML='';
+            document.getElementById("current-room-name").style.display='block';
+            document.getElementById("in-room").style.display='block';
+            */
+            
+         }
+
+         socketio.on("joined_room_info", function(data) {
+            document.getElementById("chatlog").innerHTML='';
+            document.getElementById("current-room-name").style.display='block';
+            document.getElementById("in-room").style.display='block';
+
+            curRoomId = data.roomId;
+            console.log("joined: " +curRoomId);
+            console.log("selector: "+ document.getElementById("chatroom_selector").value)
+            
+            updateCurrentRoomName(data.roomName);
+            //updateSelectorValue(curRoomId);
+         });
+
+
+         function updateCurrentRoomName(name) {
+            roomNameDiv = document.getElementById("current-room-name");
+            roomNameDiv.innerHTML='';
+            var roomName = document.createElement("p");
+            roomName.textContent="Room: "+name;
+            roomNameDiv.appendChild(roomName);
+         }
+
+         function updateSelectorValue(roomId) {
+            var selectElement = document.getElementById("chatroom_selector");
+            selectElement.value = roomId;
+         }
+         
+
+
+         //updates the drop down menu of current rooms
+         socketio.on("current_rooms", function (rooms) {
+            var selectElement = document.getElementById("chatroom_selector");
+            
+            // Clear any existing options
+            selectElement.innerHTML = "";
+            
+            
+            if(rooms.length==0) {
+               document.getElementById("enter_room_btn").style.display='none';
+            } else {
+               document.getElementById("enter_room_btn").style.display='block';
+               rooms.forEach(function (room) {
+               var option = document.createElement("option");
+               option.value = room.roomId;
+               option.text = room.roomName;
+               selectElement.appendChild(option);
+            });
+            }
+            
+            
+         });
+
+          //update currently selected room in drop down menu when new room is created
+          socketio.on("new_room_id", function(roomId) {
+            console.log("created: "+ roomId);
+            curRoomId = roomId;
+            updateSelectorValue(curRoomId);
+
+         });
+
+
+         socketio.on("message_to_client",function(data) {
+            //console.log("client received: "+ data.message + " in roomId: "+ data.roomId);
+            //Append an HR thematic break and the escaped HTML of the new message
+            document.getElementById("chatlog").appendChild(document.createElement("hr"));
+            document.getElementById("chatlog").appendChild(document.createTextNode(data['message']));
+         });
+
+         function sendMessage(){
+            var msg = document.getElementById("message_input").value;
+            socketio.emit("message_to_server", {
+               roomId: curRoomId,
+               username: username,
+               message: msg
+            });
+            document.getElementById("message_input").value='';
+         }
+
+         //changes the room that the client is in
+         document.getElementById("enter_room_btn").addEventListener("click", function() {
+            var selectedRoomId = document.getElementById("chatroom_selector").value; // Get the selected roomId from the dropdown
+            joinRoom(selectedRoomId);
+         });
+
+         //leaves room
+         document.getElementById("leave_room_btn").addEventListener("click", function() {
+            socketio.emit("leave-room");
+            curRoomId = '';
+            document.getElementById("chatlog").innerHTML='';
+            document.getElementById("current-room-name").innerHTML='';
+            document.getElementById("in-room").style.display='none';
+         })
+
+
+         socketio.on("current-room-users", function(usersInRoom) {
+            var userList = document.getElementById("current-room-users");
+            userList.innerHTML='';
+            for (const user of usersInRoom) {
+               var nameElement = document.createElement("p");
+               nameElement.innerText = user;
+               userList.appendChild(nameElement);
+            }
+         })
+         
+         //prompting for password and submitting password
+         socketio.on("password_prompt", function() {
+            var passForm = document.getElementById("password-prompt");
+            passForm.style.display="block";
+         })
+         
+         var submitPromptedPasswordButton = document.getElementById("submit_prompted_password_btn");
+         submitPromptedPasswordButton.addEventListener("click", function() {
+            var promptedPasswordElement = document.getElementById("prompted_password");
+            var password = promptedPasswordElement.value;
+            promptedPasswordElement.value='';
+            //hide the pop-up form
+            var passForm = document.getElementById("password-prompt");
+            passForm.style.display="none";
+            socketio.emit("password_submit", password);
+         })
+
+
+
+         //testing
+
+         socketio.on("left-room", function(chatroomId) {
+            console.log("left: "+chatroomId);
+         });
+
+         
+         
+   
+      </script>
+   </body>
+   
+   
+</html>
