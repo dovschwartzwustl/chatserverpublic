@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
    <head>
-      
+      <title>Chat Room</title>
       <script src="/socket.io/socket.io.js"></script>
       <style>
          body {
@@ -104,7 +104,7 @@
          }
 
          #chatlog {
-            max-height: 300px;
+            max-height: 100vh;
             overflow-y: auto;
             padding: 10px;
             border: 1px solid #cccccc;
@@ -120,6 +120,14 @@
 
          #create-chatroom-form {
             margin: 10px;
+         }
+
+         .user-button {
+            margin: 5px;
+         }
+
+         #typinglog {
+            margin-bottom: 10px;
          }
    
       </style>
@@ -153,7 +161,9 @@
             <button id="leave_room_btn">Leave</button>
             <input type=text id="message_input" placeholder="message"/>
             <button onclick="sendMessage()"  id="send_btn">send</button>
+            <div id="typinglog"></div>
             <div id="chatlog"></div>
+            
          </div>
       </div>
 
@@ -196,6 +206,7 @@
          
          let username = '';
          let curRoomId = '';
+         let socketId = '';
          function displayChatRoom() {
             username = document.getElementById("username").value;
             document.getElementById("chatroom").style.display="block";
@@ -212,7 +223,10 @@
          }
 
 
-        
+        //allows client to keep track of its own socketId
+        socketio.on("socket_id", function(id) {
+            socketId = id;
+        })
          
          
          //var socketio = io();
@@ -345,9 +359,25 @@
          socketio.on("message_to_client",function(data) {
             //console.log("client received: "+ data.message + " in roomId: "+ data.roomId);
             //Append an HR thematic break and the escaped HTML of the new message
-            document.getElementById("chatlog").appendChild(document.createElement("hr"));
-            document.getElementById("chatlog").appendChild(document.createTextNode(data['message']));
+            const chatLogDiv = document.getElementById("chatlog");
+            chatLogDiv.insertBefore(document.createElement("hr"), chatLogDiv.firstChild);
+            chatLogDiv.insertBefore(document.createTextNode(data['message']), chatLogDiv.firstChild);
          });
+
+         socketio.on("private-message", function(data) {
+            const senderUsername = data.senderUsername;
+            const receiverUsername = data.receiverUsername;
+            const message = data.message;
+            // Create a new message element with the sender's username and message
+            const privateMessageElement = document.createElement("p");
+            privateMessageText = `Private from ${senderUsername} to ${receiverUsername}: ${message}`;
+
+            // Append the new message element to the chat log container
+            const chatLogDiv = document.getElementById("chatlog");
+            chatLogDiv.insertBefore(document.createElement("hr"), chatLogDiv.firstChild);
+            chatLogDiv.insertBefore(document.createTextNode(privateMessageText), chatLogDiv.firstChild);
+         });
+
 
          function sendMessage(){
             var msg = document.getElementById("message_input").value;
@@ -368,22 +398,117 @@
          //leaves room
          document.getElementById("leave_room_btn").addEventListener("click", function() {
             socketio.emit("leave-room");
+            leaveRoom();
+         })
+
+         function leaveRoom() {
             curRoomId = '';
             document.getElementById("chatlog").innerHTML='';
             document.getElementById("current-room-name").innerHTML='';
             document.getElementById("in-room").style.display='none';
-         })
+         }
 
+         socketio.on("current-room-users", function(data) {
+            var usersInRoom = data.usersInRoom;
+            var creatorId = data.creatorId;
 
-         socketio.on("current-room-users", function(usersInRoom) {
             var userList = document.getElementById("current-room-users");
-            userList.innerHTML='';
+            userList.innerHTML = '';
+
             for (const user of usersInRoom) {
-               var nameElement = document.createElement("p");
-               nameElement.innerText = user;
-               userList.appendChild(nameElement);
+               var userContainer = document.createElement("div");
+               var nameElement = document.createElement("span");
+               nameElement.innerText = user.username;
+
+               // Check if the current user is the room creator
+               if (creatorId === socketId && user.socketId !== socketId) {
+                  var banButton = document.createElement("button");
+                  banButton.innerText = "Ban";
+                  banButton.dataset.socketId = user.socketId;
+                  banButton.dataset.username = user.username;
+                  banButton.classList.add("user-button");
+
+                  banButton.addEventListener("click", function() {
+                  var socketId = this.dataset.socketId;
+                  var username = this.dataset.username;
+                  socketio.emit("ban-user", {
+                     roomId: curRoomId,
+                     socketId: socketId,
+                     username: username
+                  });
+                  });
+
+                  var kickButton = document.createElement("button");
+                  kickButton.innerText = "Kick";
+                  kickButton.dataset.socketId = user.socketId;
+                  kickButton.dataset.username = user.username;
+                  kickButton.classList.add("user-button");
+
+                  kickButton.addEventListener("click", function() {
+                  var socketId = this.dataset.socketId;
+                  var username = this.dataset.username;
+                  socketio.emit("kick-user", {
+                     roomId: curRoomId,
+                     socketId: socketId,
+                     username: username
+                  });
+                  });
+
+                  var privateMessageButton = document.createElement("button");
+                  privateMessageButton.innerText = "Private Message";
+                  privateMessageButton.dataset.socketId = user.socketId;
+                  privateMessageButton.dataset.username = user.username;
+                  privateMessageButton.classList.add("user-button");
+
+                  privateMessageButton.addEventListener("click", function() {
+                     var receiverSocketId = this.dataset.socketId;
+                     var receiverUsername = this.dataset.username;
+                     var message = prompt("Enter your private message to " + receiverUsername + ":");
+                     console.log(message);
+                     if (message && message.trim() !== "") {
+                        socketio.emit("private-message", {
+                           senderUsername: username,
+                           receiverSocketId: receiverSocketId,
+                           message: message
+                        });
+                     }
+                  });
+
+                  userContainer.appendChild(nameElement);
+                  userContainer.appendChild(banButton);
+                  userContainer.appendChild(kickButton);
+                  userContainer.appendChild(privateMessageButton);
+               } else if (user.socketId !== socketId) {
+                  var privateMessageButton = document.createElement("button");
+                  privateMessageButton.innerText = "Private Message";
+                  privateMessageButton.dataset.socketId = user.socketId;
+                  privateMessageButton.dataset.username = user.username;
+                  privateMessageButton.classList.add("user-button");
+
+                  privateMessageButton.addEventListener("click", function() {
+                     var receiverSocketId = this.dataset.socketId;
+                     var receiverUsername = this.dataset.username;
+                     var message = prompt("Enter your private message to " + receiverUsername + ":");
+                     if (message && message.trim() !== "") {
+                        socketio.emit("private-message", {
+                           senderUsername: username,
+                           receiverSocketId: receiverSocketId,
+                           message: message
+                        });
+                     }
+                     });
+
+                  userContainer.appendChild(nameElement);
+                  userContainer.appendChild(privateMessageButton);
+               } else {
+                  userContainer.appendChild(nameElement);
+               }
+
+               userList.appendChild(userContainer);
             }
-         })
+            });
+
+
          
          //prompting for password and submitting password
          socketio.on("password_prompt", function() {
@@ -401,6 +526,84 @@
             passForm.style.display="none";
             socketio.emit("password_submit", password);
          })
+
+         //message for if a user is banned
+         socketio.on("banned_cant_join", function() {
+            alert("Cannot enter: Banned");
+         })
+
+         socketio.on("banned-from-room", function() {
+            alert("Banned from room");
+            leaveRoom();
+         })
+
+         socketio.on("kicked-from-room", function() {
+            alert("Kicked from room");
+            leaveRoom();
+         })
+         
+         const messageInput = document.getElementById("message_input");
+         //event occurs when the user starts typing
+         messageInput.addEventListener("input", function() {
+            socketio.emit("startTyping", { room: curRoomId, username: username });
+         });
+         
+         //event occurs when the user stops typing or sends message
+         messageInput.addEventListener("blur", function() {
+            socketio.emit("stopTyping", { room: curRoomId, username: username });
+         });
+
+         //listens for typing indicator event from server
+         socketio.on("typingIndicator", ({ users }) => {
+            //clear any existing typing indicators
+            clearTyping();
+            
+            //display typing indicators for users who are currently typing
+            let typingList = [];
+            users.forEach((user) => {
+               if (user !== username) {
+                  typingList.push(user);
+               }
+            });
+            if (typingList.length>0) {
+               showTyping(typingList);
+            }
+            
+         });
+
+         //display a typing indicator for a user
+         function showTyping(typingList) {
+            const typingDiv = document.getElementById("typinglog");
+            typingDiv.innerHTML = '';
+            const typingIndicatorElement = document.createElement("p");
+            let typingStr = '';
+            let count = 0;
+            //modifies output depending if length of list is = 1 or not
+            if (typingList.length != 1 ) {
+               typingList.forEach((user) => {
+                  if(count==0){
+                     typingList =  user;
+                     count++;
+                  } else {
+                     typingList += (", " + user);
+                     count++;
+                  }
+                  typingIndicatorElement.innerText = `${typingList} are typing...`;
+            });
+            } else {
+               typingIndicatorElement.innerText = `${typingList} is typing...`;
+
+            }
+            
+            //display the typing list above the chatlog
+            typingDiv.appendChild(typingIndicatorElement);
+         }
+
+         //function to clear all typing indicators
+         function clearTyping() {
+            const typingDiv = document.getElementById("typinglog");
+            typingDiv.innerHTML = '';
+         }
 
 
 
